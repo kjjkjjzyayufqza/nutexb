@@ -218,6 +218,11 @@ impl NutexbFile {
         image: &image::RgbaImage,
         name: S,
     ) -> Result<Self, tegra_swizzle::SwizzleError> {
+        println!(
+            "DEBUG: Image data size: {}, expected size: {}",
+            image.as_raw().len(),
+            image.width() as usize * image.height() as usize * 4
+        );
         let surface = Surface {
             width: image.width(),
             height: image.height(),
