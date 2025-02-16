@@ -292,7 +292,7 @@ pub struct NutexbFooter {
     pub layer_count: u32,
     /// The size in bytes of [data](struct.NutexbFile.html#structfield.data).
     pub data_size: u32,
-    #[brw(magic = b"46XT")]
+    #[brw(magic = b" XET")]
     pub version: (u16, u16),
 }
 
