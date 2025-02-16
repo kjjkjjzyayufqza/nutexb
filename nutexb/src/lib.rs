@@ -268,7 +268,7 @@ impl NutexbFile {
 /// Information about the image data.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
-#[brw(magic = b" XNT")]
+#[brw(magic = b"46XT")]
 pub struct NutexbFooter {
     // TODO: Make this field "name: String"
     // TODO: Names can be at most 63 characters + 1 null byte?
@@ -292,7 +292,7 @@ pub struct NutexbFooter {
     pub layer_count: u32,
     /// The size in bytes of [data](struct.NutexbFile.html#structfield.data).
     pub data_size: u32,
-    #[brw(magic = b" XET")]
+    #[brw(magic = b"46XT")]
     pub version: (u16, u16),
 }
 
