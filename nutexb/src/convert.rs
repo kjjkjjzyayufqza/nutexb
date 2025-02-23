@@ -60,17 +60,7 @@ pub fn create_nutexb<T: AsRef<[u8]>, S: Into<String>>(
         layer_count as usize,
     );
 
-    let data = tegra_swizzle::surface::swizzle_surface(
-        width as usize,
-        height as usize,
-        depth as usize,
-        image.image_data.as_ref(),
-        block_dim,
-        None,
-        bytes_per_pixel as usize,
-        mip_count as usize,
-        layer_count as usize,
-    )?;
+    let data = image.image_data.as_ref().to_vec();
 
     let size = data.len() as u32;
 
@@ -88,6 +78,58 @@ pub fn create_nutexb<T: AsRef<[u8]>, S: Into<String>>(
             unk2,
             mipmap_count: mip_count,
             unk3: 0x1000,
+            layer_count,
+            data_size: size,
+            version: (1, 2),
+        },
+    })
+}
+
+
+pub fn create_vs2_nutexb<T: AsRef<[u8]>, S: Into<String>>(
+    image: Surface<T>,
+    name: S,
+) -> Result<NutexbFile, tegra_swizzle::SwizzleError> {
+    let width = image.width;
+    let height = image.height;
+    let depth = image.depth;
+
+    let image_format = image.image_format;
+    let bytes_per_pixel = image_format.bytes_per_pixel();
+    let block_dim = image_format.block_dim();
+
+    let mip_count = image.mipmap_count;
+
+    let layer_count = image.layer_count;
+
+    let layer_mipmaps = calculate_layer_mip_sizes(
+        width as usize,
+        height as usize,
+        depth as usize,
+        block_dim,
+        bytes_per_pixel as usize,
+        mip_count as usize,
+        layer_count as usize,
+    );
+
+    let data = image.image_data.as_ref().to_vec();
+
+    let size = data.len() as u32;
+
+    let unk2 = unk2(depth, layer_count);
+
+    Ok(NutexbFile {
+        data,
+        layer_mipmaps,
+        footer: NutexbFooter {
+            string: NullString::from(name.into()),
+            width,
+            height,
+            depth,
+            image_format,
+            unk2,
+            mipmap_count: mip_count,
+            unk3: 0,
             layer_count,
             data_size: size,
             version: (1, 2),

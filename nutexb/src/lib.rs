@@ -52,7 +52,7 @@ nutexb.write_to_file("col_001.nutexb")?;
 ```
  */
 use binrw::{binrw, prelude::*, NullString, Endian, VecArgs};
-use convert::{create_nutexb, create_nutexb_unswizzled};
+use convert::{create_nutexb_unswizzled, create_vs2_nutexb};
 use std::{
     io::{Cursor, Read, Seek, SeekFrom, Write},
     num::NonZeroUsize,
@@ -162,6 +162,27 @@ impl NutexbFile {
 
     /// Deswizzles all the layers and mipmaps in [data](#structfield.data).
     pub fn deswizzled_data(&self) -> Result<Vec<u8>, tegra_swizzle::SwizzleError> {
+        println!("DEBUG: Deswizzling data {}", self.data.len());
+        println!("DEBUG: Deswizzling width {}", self.footer.width);
+        println!("DEBUG: Deswizzling height {}", self.footer.height);
+        println!("DEBUG: Deswizzling depth {}", self.footer.depth);
+        println!("DEBUG: Deswizzling block dim {:?}", self.footer.image_format.block_dim());
+        println!("DEBUG: Deswizzling bytes per pixel {}", self.footer.image_format.bytes_per_pixel());
+        println!("DEBUG: Deswizzling mipmap count {}", self.footer.mipmap_count);
+        println!("DEBUG: Deswizzling layer count {}", self.footer.layer_count);
+
+        //expected_size
+        println!("DEBUG: Expected size: {}", deswizzled_surface_size(
+            self.footer.width as usize,
+            self.footer.height as usize,
+            self.footer.depth as usize,
+            self.footer.image_format.block_dim(),
+            self.footer.image_format.bytes_per_pixel() as usize,
+            self.footer.mipmap_count as usize,
+            self.footer.layer_count as usize,
+        ));
+
+        //deswizzle_surface => swizzle_surface
         tegra_swizzle::surface::deswizzle_surface(
             self.footer.width as usize,
             self.footer.height as usize,
@@ -181,7 +202,7 @@ impl NutexbFile {
         image: Surface<T>,
         name: S,
     ) -> Result<Self, tegra_swizzle::SwizzleError> {
-        create_nutexb(image, name)
+        create_vs2_nutexb(image, name)
     }
 
     /// Creates a [NutexbFile] from `surface` with the nutexb string set to `name` without any swizzling.

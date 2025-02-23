@@ -150,7 +150,7 @@ impl From<NutexbFormat> for DxgiFormat {
 
 pub fn create_dds(nutexb: &NutexbFile) -> Result<Dds, tegra_swizzle::SwizzleError> {
     let some_if_above_one = |x| if x > 0 { Some(x) } else { None };
-
+    println!("DEBUG NUTEXB RUNNING");
     // TODO: Avoid unwrap.
     let mut dds = Dds::new_dxgi(NewDxgiParams {
         height: nutexb.footer.height,
@@ -173,9 +173,9 @@ pub fn create_dds(nutexb: &NutexbFile) -> Result<Dds, tegra_swizzle::SwizzleErro
         alpha_mode: AlphaMode::Unknown, // TODO: Alpha mode?
     })
     .unwrap();
-
+    println!("DEBUG NUTEXB DATA");
     // DDS stores mipmaps in a contiguous region of memory.
-    dds.data = nutexb.deswizzled_data()?;
-
+    dds.data = nutexb.data.clone();
+    println!("DEBUG NUTEXB END");
     Ok(dds)
 }
