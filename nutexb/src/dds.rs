@@ -172,9 +172,7 @@ pub fn create_dds(nutexb: &NutexbFile) -> Result<Dds, tegra_swizzle::SwizzleErro
         alpha_mode: AlphaMode::Unknown, // TODO: Alpha mode?
     })
     .unwrap();
-    println!("DEBUG NUTEXB DATA");
     // DDS stores mipmaps in a contiguous region of memory.
     dds.data = nutexb.data.clone();
-    println!("DEBUG NUTEXB END");
     Ok(dds)
 }
