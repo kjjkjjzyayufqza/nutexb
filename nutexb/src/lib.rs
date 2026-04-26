@@ -75,7 +75,9 @@ pub use image;
 mod convert;
 pub use convert::Surface;
 
+const FOOTER_SIZE_V12: usize = 112;
 const FOOTER_SIZE: usize = 112;
+const FOOTER_SIZE_V11: usize = 0x86C;
 const LAYER_MIPMAPS_SIZE: usize = 64;
 
 /// The data stored in a nutexb file like `"def_001_col.nutexb"`.
@@ -94,7 +96,101 @@ pub struct NutexbFile {
     pub footer: NutexbFooter,
 }
 
-// Use a custom parser since we don't know the data size until finding the footer.
+fn peek_version<R: Read + Seek>(reader: &mut R) -> BinResult<(u16, u16)> {
+    reader.seek(SeekFrom::End(-4))?;
+    let major: u16 = reader.read_le()?;
+    let minor: u16 = reader.read_le()?;
+    Ok((major, minor))
+}
+
+fn read_v12<R: Read + Seek>(reader: &mut R) -> BinResult<NutexbFile> {
+    reader.seek(SeekFrom::End(-(FOOTER_SIZE_V12 as i64)))?;
+    let footer: NutexbFooter = reader.read_le()?;
+
+    reader.seek(SeekFrom::Current(
+        -(FOOTER_SIZE_V12 as i64 + LAYER_MIPMAPS_SIZE as i64 * footer.layer_count as i64),
+    ))?;
+
+    let data_size = reader.stream_position()?;
+
+    let layer_mipmaps: Vec<LayerMipmaps> = reader.read_le_args(VecArgs {
+        count: footer.layer_count as usize,
+        inner: (footer.mipmap_count,),
+    })?;
+
+    reader.seek(SeekFrom::Start(0))?;
+    let mut data = vec![0u8; data_size as usize];
+    reader.read_exact(&mut data)?;
+
+    Ok(NutexbFile { data, layer_mipmaps, footer })
+}
+
+fn read_v11<R: Read + Seek>(reader: &mut R) -> BinResult<NutexbFile> {
+    let file_size = reader.seek(SeekFrom::End(0))?;
+    let footer_start = file_size.checked_sub(FOOTER_SIZE_V11 as u64)
+        .ok_or_else(|| binrw::Error::AssertFail {
+            pos: 0,
+            message: format!("File too small for v1.1 nutexb (size={})", file_size),
+        })?;
+
+    reader.seek(SeekFrom::Start(footer_start))?;
+    let mut magic_buf = [0u8; 4];
+    reader.read_exact(&mut magic_buf)?;
+    if &magic_buf != b"46XT" {
+        return Err(binrw::Error::AssertFail {
+            pos: footer_start,
+            message: format!("bad v1.1 magic at 0x{:x}: {:?}", footer_start, magic_buf),
+        });
+    }
+
+    let mut name_buf = [0u8; 0x40];
+    reader.read_exact(&mut name_buf)?;
+    let name_len = name_buf.iter().position(|&b| b == 0).unwrap_or(0x40);
+    let name_str = String::from_utf8_lossy(&name_buf[..name_len]).to_string();
+
+    let width: u32 = reader.read_le()?;
+    let height: u32 = reader.read_le()?;
+    let depth: u32 = reader.read_le()?;
+    let image_format: NutexbFormat = reader.read_le()?;
+    let _unk2: u32 = reader.read_le()?;
+    let layer_count: u32 = reader.read_le()?;
+    let mipmap_count: u32 = reader.read_le()?;
+    let data_size: u32 = footer_start as u32;
+
+    let mip_sizes_start = footer_start + 0x64;
+    reader.seek(SeekFrom::Start(mip_sizes_start))?;
+
+    let mut layer_mipmaps = Vec::new();
+    for _ in 0..layer_count {
+        let mut mipmap_sizes = Vec::new();
+        for _ in 0..mipmap_count {
+            let sz: u32 = reader.read_le()?;
+            mipmap_sizes.push(sz);
+        }
+        layer_mipmaps.push(LayerMipmaps { mipmap_sizes });
+    }
+
+    reader.seek(SeekFrom::Start(0))?;
+    let mut data = vec![0u8; data_size as usize];
+    reader.read_exact(&mut data)?;
+
+    let footer = NutexbFooter {
+        string: NullString(name_str.into_bytes()),
+        width,
+        height,
+        depth,
+        image_format,
+        unk2: 0,
+        mipmap_count,
+        unk3: 0,
+        layer_count,
+        data_size,
+        version: (1, 1),
+    };
+
+    Ok(NutexbFile { data, layer_mipmaps, footer })
+}
+
 impl BinRead for NutexbFile {
     type Args<'arg> = ();
 
@@ -103,33 +199,12 @@ impl BinRead for NutexbFile {
         _endian: Endian,
         _args: Self::Args<'_>,
     ) -> BinResult<Self> {
-        // We need the footer to know the size of the layer mipmaps.
-        reader.seek(SeekFrom::End(-(FOOTER_SIZE as i64)))?;
-        let footer: NutexbFooter = reader.read_le()?;
-
-        // We need the layer mipmaps to know the size of the data section.
-        reader.seek(SeekFrom::Current(
-            -(FOOTER_SIZE as i64 + LAYER_MIPMAPS_SIZE as i64 * footer.layer_count as i64),
-        ))?;
-
-        // The image data takes up the remaining space.
-        let data_size = reader.stream_position()?;
-
-        let layer_mipmaps: Vec<LayerMipmaps> = reader.read_le_args(VecArgs {
-            count: footer.layer_count as usize,
-            inner: (footer.mipmap_count,),
-        })?;
-
-        reader.seek(SeekFrom::Start(0))?;
-
-        let mut data = vec![0u8; data_size as usize];
-        reader.read_exact(&mut data)?;
-
-        Ok(Self {
-            data,
-            layer_mipmaps,
-            footer,
-        })
+        let (major, minor) = peek_version(reader)?;
+        if major == 1 && minor == 1 {
+            read_v11(reader)
+        } else {
+            read_v12(reader)
+        }
     }
 }
 
